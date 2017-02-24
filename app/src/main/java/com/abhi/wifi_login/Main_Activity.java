@@ -2,35 +2,35 @@ package com.abhi.wifi_login;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.Toast;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicNameValuePair;
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.VolleyLog;
+import com.android.volley.toolbox.StringRequest;
+import com.android.volley.toolbox.Volley;
+
+
+import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+
+import static com.android.volley.VolleyLog.TAG;
 
 public class Main_Activity extends Activity {
 
@@ -39,18 +39,8 @@ public class Main_Activity extends Activity {
     CheckBox cB;
     String id, pwd;
     String pass1;
-    int $num;
     User_Info user;
-
-    private static String convertInputStreamToString(InputStream inputStream) throws IOException {
-        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-        String line = "";
-        String result = "";
-        while ((line = bufferedReader.readLine()) != null)
-            result += line;
-        inputStream.close();
-        return result;
-    }
+    String result="";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -85,7 +75,7 @@ public class Main_Activity extends Activity {
                         savePreferences("saved_id", eT.getText().toString());
                         savePreferences("saved_pwd", eT2.getText().toString());
                     }
-                    new HttpAsyncTask().execute("https://10.0.1.254:4100/wgcgi.cgi");
+                    //new HttpAsyncTask().execute("https://10.0.1.254:4100/wgcgi.cgi");
                 } else {
                     showAlertDialog(Main_Activity.this,
                             "No Internet Connection",
@@ -152,91 +142,83 @@ public class Main_Activity extends Activity {
         alertDialog.show();
     }
 
-    public String POST(String url, User_Info user) {
-        InputStream inputStream = null;
-        String result = "";
-        try {
+    private void Login_task(){
 
-            // 1. create HttpClient
-            //HttpClient httpclient = new DefaultHttpClient();
-            DefaultHttpClient client = (DefaultHttpClient) WebClientDevWrapper.getNewHttpClient();
+        // Tag used to cancel the request
+        String req_tag = "POST_REQUEST";
 
-            // 2. make POST request to the given URL
-            //HttpPost httpPost = new HttpPost(url);
-            HttpPost post = new HttpPost(url);
+        String url = "https://10.0.1.254:4100/wgcgi.cgi";
 
-            String json = "";
+        final ProgressDialog pDialog = new ProgressDialog(this);
+        pDialog.setMessage("Loading...");
+        pDialog.show();
 
-            // Add your data
-            List<NameValuePair> nameValuePairs = new ArrayList<NameValuePair>(2);
-            nameValuePairs.add(new BasicNameValuePair("fw_username", user.getId()));
-            nameValuePairs.add(new BasicNameValuePair("fw_password", user.getPwd()));
-            nameValuePairs.add(new BasicNameValuePair("fw_domain", "gpra.in"));
-            nameValuePairs.add(new BasicNameValuePair("submit", "Login"));
-            nameValuePairs.add(new BasicNameValuePair("action", "fw_logon"));
-            nameValuePairs.add(new BasicNameValuePair("fw_logon_type", "logon"));
-            nameValuePairs.add(new BasicNameValuePair("redirect", ""));
-            nameValuePairs.add(new BasicNameValuePair("lang", "en-US"));
-            post.setEntity(new UrlEncodedFormEntity(nameValuePairs));
+        StringRequest strReq = new StringRequest(
+                Request.Method.POST,
+                url,
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+                        //Log.d(TAG, response.toString());
+                        pDialog.hide();
+                        if(response.toString().contains("successfully authenticated"))
+                        {
+                            Toast.makeText(Main_Activity.this, "Successfully Authenticated.", Toast.LENGTH_SHORT).show();
+                            result = "Successfully Authenticated.";
+                        }
+                        else
+                        {
+                            Toast.makeText(Main_Activity.this, "Invalid Credentials Provided.", Toast.LENGTH_SHORT).show();
+                            result = "Invalid Credentials Provided.";
+                        }
+                    }
+                },
+                new Response.ErrorListener() {
+                    @Override
+                    public void onErrorResponse(VolleyError error) {
+                        VolleyLog.d(TAG, "Error: " + error.getMessage());
+                        pDialog.hide();
+                    }
+                }
+        )
+        {
+            @Override
+            protected Map<String, String> getParams() {
 
-            // Execute HTTP Post Request
-            HttpResponse response = client.execute(post);
+                Map<String, String> params = new HashMap<String, String>();
+                params.put("fw_username", user.getId());
+                params.put("fw_password", user.getPwd());
+                params.put("fw_domain", "gpra.in");
+                params.put("submit", "Login");
+                params.put("action", "fw_logon");
+                params.put("fw_logon_type", "logon");
+                params.put("redirect", "");
+                params.put("lang", "en-US");
+                return params;
+            }
+        };
 
-            // 9. receive response as inputStream
-            inputStream = response.getEntity().getContent();
+        // Adding request to request queue
+        RequestQueue mRequestQueue;
+        mRequestQueue = Volley.newRequestQueue(getApplicationContext());
+        strReq.setTag(req_tag);
+        mRequestQueue.add(strReq);
 
-            // 10. convert inputstream to string
-            if (inputStream != null) {
-                result = convertInputStreamToString(inputStream);
-                //Log.i("result123",result);
-            } else
-                result = "Did not work!";
-
-        } catch (Exception e) {
-            Log.d("InputStream", e.getLocalizedMessage());
-        }
-
-        // 11. return result
-        return result;
-    }
-
-    private class HttpAsyncTask extends AsyncTask<String, Void, String> {
-
-        @Override
-        protected String doInBackground(String... urls) {
-            user = new User_Info();
-            user.setId(id);
-            user.setPwd(pwd);
-
-            return POST(urls[0], user);
-        }
-
-        // onPostExecute displays the results of the AsyncTask.
-        @Override
-        protected void onPostExecute(String result) {
-
-            //Log.i("result1234", result);
-            String str2 = "successfully authenticated";
-            if(result.contains(str2)) {
+        if(result.contains("Successfully")) {
             try {
-                Toast.makeText(getBaseContext(), "Successfully Authenticated", Toast.LENGTH_LONG).show();
                 JSONObject pass = new JSONObject();
                 pass.accumulate("id", id);
                 pass.accumulate("pwd", pwd);
                 pass1 = pass.toString();
-            } catch (Exception e) {
-                Log.d("makepass", e.getLocalizedMessage());
+            } catch (JSONException e) {
+                e.printStackTrace();
             }
             Intent i = new Intent(Main_Activity.this, Logged_In.class);
             // sending data to new activity
             i.putExtra("data", pass1);
             startActivity(i);
-            finish();
-            }
-            else
-            {
-                Toast.makeText(getBaseContext(), "Not Authenticated, Please Check your Credentials!", Toast.LENGTH_LONG).show();
-            }
         }
     }
+
+
 }
